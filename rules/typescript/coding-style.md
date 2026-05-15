@@ -60,6 +60,27 @@ type UserWithRole = User & {
 - Use `unknown` for external or untrusted input, then narrow it safely
 - Use generics when a value's type depends on the caller
 
+### Avoid `as` Type Assertions
+
+`as` tells the compiler "trust me" and bypasses type checking — the same risk as `any`.
+
+- Avoid `as SomeType` when TypeScript can infer or narrow the type itself
+- Never use `as any` — it is `any` in disguise
+- Prefer a type guard (`instanceof`, `typeof`, custom predicate) over `as`
+- Only use `as` when bridging library types you cannot change (e.g. DOM APIs, third-party responses), and add a comment explaining why
+
+```typescript
+// WRONG: silences the compiler without verifying the shape
+const user = response.data as User
+
+// CORRECT: validate before narrowing
+const user = userSchema.parse(response.data) // Zod throws if shape is wrong
+
+// ACCEPTABLE: DOM API returns Element | null; we have already checked
+const canvas = document.getElementById('chart') as HTMLCanvasElement
+// ↑ only safe after confirming the element exists and is a canvas
+```
+
 ```typescript
 // WRONG: any removes type safety
 function getErrorMessage(error: any) {
@@ -80,7 +101,7 @@ function getErrorMessage(error: unknown): string {
 
 - Define component props with a named `interface` or `type`
 - Type callback props explicitly
-- Do not use `React.FC` unless there is a specific reason to do so
+- Do not use `React.FC` — it adds an implicit `children` prop you didn't ask for, hides the return type from callers, and offers no advantage over a plain function with typed props
 
 ```typescript
 interface User {
@@ -158,9 +179,11 @@ function getErrorMessage(error: unknown): string {
   return 'Unexpected error'
 }
 
+// ⚠️ MUST REPLACE: swap this stub with your real logger (e.g. pino, winston).
+// Leaving it as-is silently swallows errors in production.
 const logger = {
   error: (message: string, error: unknown) => {
-    // Replace with your production logger (for example, pino or winston).
+    // e.g. pinoLogger.error({ err: error }, message)
   }
 }
 

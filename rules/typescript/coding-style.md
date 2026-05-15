@@ -134,6 +134,39 @@ export function formatUser(user) {
 }
 ```
 
+### `null` vs `undefined`
+
+Use each for a distinct semantic meaning — mixing them forces callers to check both every time.
+
+| Value | Meaning |
+|-------|---------|
+| `undefined` | Value was never set / property does not exist |
+| `null` | Value was explicitly cleared / intentionally absent |
+
+Rules:
+
+- Use `undefined` as the default "not present" signal — it is what TypeScript and JavaScript use natively (missing props, optional parameters, uninitialised variables)
+- Use `null` only when you need to **explicitly communicate** "this was set to nothing" (e.g. clearing a foreign key, an API field that distinguishes "not provided" from "removed")
+- Never mix both for the same concept in one codebase area — pick one and stay consistent
+- Enable `strictNullChecks` (included in `strict: true`) so the compiler enforces the distinction
+- Prefer optional chaining (`?.`) and nullish coalescing (`??`) over manual `=== null || === undefined` checks
+
+```typescript
+// WRONG: returning null for "not found" when the rest of the codebase uses undefined
+function findUser(id: string): User | null { ... }
+
+// CORRECT: consistent with JS/TS conventions for "not found"
+function findUser(id: string): User | undefined { ... }
+
+// CORRECT: null signals intentional removal (e.g. clearing a DB foreign key)
+interface Profile {
+  avatarUrl: string | null  // null = user explicitly removed their avatar
+}
+
+// CORRECT: optional chaining + nullish coalescing
+const name = user?.profile?.displayName ?? 'Anonymous'
+```
+
 ## Immutability
 
 Use spread operator for immutable updates:

@@ -78,35 +78,41 @@ function extractFilePaths(toolName, toolInput) {
 
 /**
  * Read cumulative cost for a session from the tail of costs.jsonl.
- * Reads last 8KB to avoid scanning entire file.
+ * Reads last 64KB to give long sessions enough room to find their latest row.
+ *
+ * Each row in costs.jsonl is itself a cumulative snapshot (cost-tracker.js
+ * re-scans the entire transcript on every Stop event), so we take the LATEST
+ * row per session — never sum, or we double-count every prior snapshot.
  */
 function readSessionCost(sessionId) {
   try {
     const costsPath = path.join(getClaudeDir(), 'metrics', 'costs.jsonl');
     const stat = fs.statSync(costsPath);
-    const readSize = Math.min(stat.size, 8192);
+    const readSize = Math.min(stat.size, 65536);
     const fd = fs.openSync(costsPath, 'r');
     try {
       const buf = Buffer.alloc(readSize);
       fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
       const lines = buf.toString('utf8').split('\n').filter(Boolean);
 
-      let totalCost = 0;
-      let totalIn = 0;
-      let totalOut = 0;
+      let latest = null;
       for (const line of lines) {
         try {
           const row = JSON.parse(line);
-          if (row.session_id === sessionId) {
-            totalCost += toNumber(row.estimated_cost_usd);
-            totalIn += toNumber(row.input_tokens);
-            totalOut += toNumber(row.output_tokens);
+          if (row.session_id !== sessionId) continue;
+          if (!latest || (row.timestamp || '') > (latest.timestamp || '')) {
+            latest = row;
           }
         } catch {
           /* skip malformed lines */
         }
       }
-      return { totalCost, totalIn, totalOut };
+      if (!latest) return { totalCost: 0, totalIn: 0, totalOut: 0 };
+      return {
+        totalCost: toNumber(latest.estimated_cost_usd),
+        totalIn: toNumber(latest.input_tokens),
+        totalOut: toNumber(latest.output_tokens)
+      };
     } finally {
       fs.closeSync(fd);
     }

@@ -179,6 +179,75 @@ function runTests() {
     passed++;
   else failed++;
 
+  if (
+    test('readSessionCost returns latest cumulative snapshot, not sum (regression)', () => {
+      const tmpHome = makeTempHome();
+      const originalHome = process.env.HOME;
+      const originalUserProfile = process.env.USERPROFILE;
+      try {
+        process.env.HOME = tmpHome;
+        process.env.USERPROFILE = tmpHome;
+        const metricsDir = path.join(tmpHome, '.claude', 'metrics');
+        fs.mkdirSync(metricsDir, { recursive: true });
+        // cost-tracker writes one row per Stop, each a cumulative snapshot
+        // for the same session. Bridge must take the latest, not sum them.
+        fs.writeFileSync(
+          path.join(metricsDir, 'costs.jsonl'),
+          [
+            JSON.stringify({ timestamp: '2026-05-18T01:00:00.000Z', session_id: 's1', estimated_cost_usd: 1.00, input_tokens: 10, output_tokens: 20 }),
+            JSON.stringify({ timestamp: '2026-05-18T01:01:00.000Z', session_id: 's1', estimated_cost_usd: 2.50, input_tokens: 25, output_tokens: 50 }),
+            JSON.stringify({ timestamp: '2026-05-18T01:02:00.000Z', session_id: 's1', estimated_cost_usd: 4.75, input_tokens: 40, output_tokens: 90 })
+          ].join('\n') + '\n',
+          'utf8'
+        );
+        const result = readSessionCost('s1');
+        assert.strictEqual(result.totalCost, 4.75, 'should be latest row, not 8.25 sum');
+        assert.strictEqual(result.totalIn, 40);
+        assert.strictEqual(result.totalOut, 90);
+      } finally {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+        if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = originalUserProfile;
+        fs.rmSync(tmpHome, { recursive: true, force: true });
+      }
+    })
+  )
+    passed++;
+  else failed++;
+
+  if (
+    test('readSessionCost handles out-of-order timestamps correctly', () => {
+      const tmpHome = makeTempHome();
+      const originalHome = process.env.HOME;
+      const originalUserProfile = process.env.USERPROFILE;
+      try {
+        process.env.HOME = tmpHome;
+        process.env.USERPROFILE = tmpHome;
+        const metricsDir = path.join(tmpHome, '.claude', 'metrics');
+        fs.mkdirSync(metricsDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(metricsDir, 'costs.jsonl'),
+          [
+            JSON.stringify({ timestamp: '2026-05-18T01:02:00.000Z', session_id: 's2', estimated_cost_usd: 4.75, input_tokens: 40, output_tokens: 90 }),
+            JSON.stringify({ timestamp: '2026-05-18T01:00:00.000Z', session_id: 's2', estimated_cost_usd: 1.00, input_tokens: 10, output_tokens: 20 })
+          ].join('\n') + '\n',
+          'utf8'
+        );
+        const result = readSessionCost('s2');
+        assert.strictEqual(result.totalCost, 4.75);
+      } finally {
+        if (originalHome === undefined) delete process.env.HOME;
+        else process.env.HOME = originalHome;
+        if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+        else process.env.USERPROFILE = originalUserProfile;
+        fs.rmSync(tmpHome, { recursive: true, force: true });
+      }
+    })
+  )
+    passed++;
+  else failed++;
+
   // run tests
   console.log('\nrun:');
 
